@@ -13,6 +13,7 @@ import (
 
 	"github.com/anevsky/cachego/memory"
 	"github.com/panjf2000/gnet"
+	gerrors "github.com/panjf2000/gnet/pkg/errors"
 	"github.com/panjf2000/gnet/pkg/pool/goroutine"
 	"github.com/yongman/go/goredis"
 )
@@ -140,24 +141,19 @@ func (r *RedisCodec) Encode(c gnet.Conn, buf []byte) (out []byte, err error) {
 
 func (r *RedisCodec) Decode(c gnet.Conn) (out []byte, err error) {
 	buf := c.Read()
-	if len(buf) == 0 {
-		c.ResetBuffer()
-		return
-	}
 pipeline:
 	if len(buf) == 0 {
-		return
+		c.ResetBuffer()
+		return nil, gerrors.ErrIncompletePacket
 	}
 	resp := new(Resp)
 	err = resp.parserRESP(buf)
-	// bad thing happened
-	if err != nil {
+	if err != nil { // bad thing happened
 		c.SetContext(err)
 		return nil, err
-	} else if !resp.complete {
-		// request not ready, yet
+	} else if !resp.complete { // request not ready, yet
 		log.Println("fail to handling short req: ", string(buf))
-		return
+		return nil, gerrors.ErrIncompletePacket
 	}
 	c.ShiftN(resp.n)
 	buf = buf[resp.n:]
